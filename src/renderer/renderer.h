@@ -14,8 +14,6 @@
 
 namespace cc {
 
-    class program;
-
     class renderer : public singleton<renderer> {
         friend class singleton<renderer>;
 
@@ -27,21 +25,15 @@ namespace cc {
 
     private:
 
-        struct vertex {
-
-            cc::float2 pos;
-            cc::color3 color;
-
-        };
-
-    private:
-
         GLuint m_program;
 
         GLsizei m_buffer_size = 0;
 
-        GLuint m_array_buffer = 0;
-        vertex *m_vertices_buffer = nullptr;
+        GLuint m_vertex_buffer_id = 0;
+        float2 *m_vertex_buffer = nullptr;
+
+        GLuint m_color_buffer_id = 0;
+        color3 *m_color_buffer = nullptr;
 
     private:
 

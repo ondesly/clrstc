@@ -43,15 +43,27 @@ namespace {
 }
 
 cc::renderer::renderer() {
-    glGenBuffers(1, &m_array_buffer);
-    glBindBuffer(GL_ARRAY_BUFFER, m_array_buffer);
+    glGenBuffers(1, &m_vertex_buffer_id);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
+    glVertexAttribPointer(c_position_attribute, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+
+    glGenBuffers(1, &m_color_buffer_id);
+    glBindBuffer(GL_ARRAY_BUFFER, m_color_buffer_id);
+    glVertexAttribPointer(c_color_attribute, 3, GL_UNSIGNED_BYTE, GL_TRUE, 0, nullptr);
+
+    //
 
     m_program = make_and_use_program();
 }
 
 cc::renderer::~renderer() {
-    glDeleteBuffers(1, &m_array_buffer);
-    delete[] m_vertices_buffer;
+    glDeleteBuffers(1, &m_vertex_buffer_id);
+    delete[] m_vertex_buffer;
+
+    glDeleteBuffers(1, &m_color_buffer_id);
+    delete[] m_color_buffer;
+
+    //
 
     glDeleteProgram(m_program);
 }
@@ -66,30 +78,33 @@ void cc::renderer::render() {
     static std::uniform_int_distribution<int> rnd(0, 255);
 
     for (auto i = 0; i < m_buffer_size; ++i) {
-        m_vertices_buffer[i].color.r = static_cast<unsigned char>(rnd(rng));
-        m_vertices_buffer[i].color.g = static_cast<unsigned char>(rnd(rng));
-        m_vertices_buffer[i].color.b = static_cast<unsigned char>(rnd(rng));
+        m_color_buffer[i].r = static_cast<unsigned char>(rnd(rng));
+        m_color_buffer[i].g = static_cast<unsigned char>(rnd(rng));
+        m_color_buffer[i].b = static_cast<unsigned char>(rnd(rng));
     }
 
     // Draw
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertex) * m_buffer_size, m_vertices_buffer, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, m_color_buffer_id);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(color3) * m_buffer_size, m_color_buffer, GL_DYNAMIC_DRAW);
+
     glDrawArrays(GL_POINTS, 0, m_buffer_size);
 }
 
 void cc::renderer::set_screen_size(const cc::float2 &size) {
-    delete[] m_vertices_buffer;
+    delete[] m_vertex_buffer;
 
-    // Make buffer
+    // Make buffers
 
     const auto width = GLushort(std::ceil(size.w / c_point_size));
     const auto height = GLushort(std::ceil(size.h / c_point_size));
 
     m_buffer_size = width * height;
 
-    m_vertices_buffer = new vertex[m_buffer_size];
+    m_vertex_buffer = new float2[m_buffer_size];
+    m_color_buffer = new color3[m_buffer_size];
 
-    // Fill buffer
+    // Fill vertex buffer
 
     const float norm_w = c_point_size / (size.w / 2);
     const float norm_h = c_point_size / (size.h / 2);
@@ -97,8 +112,13 @@ void cc::renderer::set_screen_size(const cc::float2 &size) {
     for (auto i = 0; i < m_buffer_size; ++i) {
         const auto x = (i % width) - width / 2;
         const auto y = (i / width) - height / 2;
-        m_vertices_buffer[i] = {{(x + 0.5F) * norm_w, (y + 0.5F) * norm_h}, {}};
+        m_vertex_buffer[i] = {(x + 0.5F) * norm_w, (y + 0.5F) * norm_h};
     }
+
+    // Bind vertex buffer
+
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float2) * m_buffer_size, m_vertex_buffer, GL_STATIC_DRAW);
 }
 
 GLuint cc::renderer::make_and_use_program() const {
@@ -116,11 +136,9 @@ GLuint cc::renderer::make_and_use_program() const {
 
     glEnableVertexAttribArray(c_position_attribute);
     glBindAttribLocation(program, c_position_attribute, c_position_attribute_name);
-    glVertexAttribPointer(c_position_attribute, 2, GL_FLOAT, GL_FALSE, sizeof(vertex), (GLvoid *) offsetof(vertex, pos));
 
     glEnableVertexAttribArray(c_color_attribute);
     glBindAttribLocation(program, c_color_attribute, c_color_attribute_name);
-    glVertexAttribPointer(c_color_attribute, 3, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(vertex), (GLvoid *) offsetof(vertex, color));
 
     glBindAttribLocation(program, c_point_size_attribute, c_point_size_attribute_name);
     glVertexAttrib1f(c_point_size_attribute, c_point_size);
