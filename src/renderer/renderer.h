@@ -9,7 +9,6 @@
 
 #include "core/gl.h"
 #include "core/singleton.h"
-#include "math/color3.h"
 #include "math/float2.h"
 
 namespace cc {
@@ -25,17 +24,26 @@ namespace cc {
 
     private:
 
-        GLuint m_program;
+        struct vertex {
 
-        GLsizei m_buffer_size = 0;
+            GLfloat pos[2];
+            GLfloat tex[2];
 
-        GLuint m_vertex_buffer_id = 0;
-        float2 *m_vertex_buffer = nullptr;
+        };
 
-        GLuint m_color_buffer_id = 0;
-        color3 *m_color_buffer = nullptr;
+    private:
 
-        color3 *m_sample = nullptr;
+        GLuint m_program = 0;
+
+        GLuint m_texture_id = 0;
+        GLuint m_vertices_buffer_id = 0;
+
+        GLsizei m_tex_width = 0;
+        GLsizei m_tex_height = 0;
+        GLsizei m_tex_size = 0;
+
+        unsigned short *m_tex_data = nullptr;
+        unsigned short *m_sample = nullptr;
 
     private:
 

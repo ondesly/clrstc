@@ -11,45 +11,41 @@ namespace {
 
     const char *c_vertex_shader = R"(
         attribute lowp vec4 positionAttribute;
-        attribute lowp vec4 colorAttribute;
-        attribute lowp float pointSize;
-        varying lowp vec4 fragmentColor;
+        attribute lowp vec2 textureCoordsAttribute;
+
+        varying lowp vec2 textureCoords;
 
         void main() {
             gl_Position = positionAttribute;
-            fragmentColor = colorAttribute;
-            gl_PointSize = pointSize;
+            textureCoords = textureCoordsAttribute;
         }
     )";
 
     const char *c_fragment_shader = R"(
-        varying lowp vec4 fragmentColor;
+        varying lowp vec2 textureCoords;
+
+        uniform sampler2D texture;
 
         void main() {
-            gl_FragColor = fragmentColor;
+            gl_FragColor = texture2D(texture, textureCoords);
         }
     )";
 
     const char *c_position_attribute_name = "positionAttribute";
-    const char *c_color_attribute_name = "colorAttribute";
-    const char *c_point_size_attribute_name = "pointSize";
+    const char *c_texture_coords_attribute_name = "textureCoordsAttribute";
 
     const GLuint c_position_attribute = 0;
-    const GLuint c_color_attribute = c_position_attribute + 1;
-    const GLuint c_point_size_attribute = c_color_attribute + 1;
+    const GLuint c_texture_coords_attribute = c_position_attribute + 1;
 
     const float c_point_size = 8.F;
+
+    const GLushort c_indices[] = {0, 1, 2, 1, 2, 3};
 
 }
 
 cc::renderer::renderer() {
-    glGenBuffers(1, &m_vertex_buffer_id);
-    glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
-    glVertexAttribPointer(c_position_attribute, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
-
-    glGenBuffers(1, &m_color_buffer_id);
-    glBindBuffer(GL_ARRAY_BUFFER, m_color_buffer_id);
-    glVertexAttribPointer(c_color_attribute, 3, GL_UNSIGNED_BYTE, GL_TRUE, 0, nullptr);
+    glGenBuffers(1, &m_vertices_buffer_id);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vertices_buffer_id);
 
     //
 
@@ -57,12 +53,9 @@ cc::renderer::renderer() {
 }
 
 cc::renderer::~renderer() {
-    glDeleteBuffers(1, &m_vertex_buffer_id);
-    delete[] m_vertex_buffer;
+    glDeleteBuffers(1, &m_vertices_buffer_id);
 
-    glDeleteBuffers(1, &m_color_buffer_id);
-    delete[] m_color_buffer;
-
+    delete[] m_tex_data;
     delete[] m_sample;
 
     //
@@ -75,60 +68,63 @@ void cc::renderer::render() {
 
     // Update
 
-    static auto offset = m_buffer_size;
-    for (int i = 0; i < m_buffer_size; ++i) {
-        m_color_buffer[i] = m_sample[(i + offset) % m_buffer_size];
+    static auto offset = m_tex_size;
+    for (auto i = 0; i < m_tex_size; ++i) {
+        m_tex_data[i] = m_sample[(i + offset) % m_tex_size];
     }
     ++offset;
 
     // Draw
 
-    glBindBuffer(GL_ARRAY_BUFFER, m_color_buffer_id);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(color3) * m_buffer_size, m_color_buffer, GL_DYNAMIC_DRAW);
-
-    glDrawArrays(GL_POINTS, 0, m_buffer_size);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, m_tex_width, m_tex_height, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, m_tex_data);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, c_indices);
 }
 
 void cc::renderer::set_screen_size(const cc::float2 &size) {
-    delete[] m_vertex_buffer;
+    m_tex_width = GLsizei(size.w / c_point_size);
+    m_tex_height = GLsizei(size.h / c_point_size);
+    m_tex_size = m_tex_width * m_tex_height;
 
-    // Make buffers
+    // Vertices buffer
 
-    const auto width = GLushort(std::ceil(size.w / c_point_size));
-    const auto height = GLushort(std::ceil(size.h / c_point_size));
+    const auto normalized_w = m_tex_width * c_point_size / size.w;
+    const auto normalized_h = m_tex_height * c_point_size / size.h;
 
-    m_buffer_size = width * height;
+    vertex vertices_buffer[4] = {
+            {{-normalized_w, -normalized_h}, {0.F, 1.F}},
+            {{normalized_w, -normalized_h}, {1.F, 1.F}},
+            {{-normalized_w, normalized_h}, {0.F, 0.F}},
+            {{normalized_w, normalized_h}, {1.F, 0.F}}
+    };
 
-    m_vertex_buffer = new float2[m_buffer_size];
-    m_color_buffer = new color3[m_buffer_size];
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertex) * 4, vertices_buffer, GL_STATIC_DRAW);
 
-    // Fill vertex buffer
+    // Texture data
 
-    const float norm_w = c_point_size / (size.w / 2);
-    const float norm_h = c_point_size / (size.h / 2);
+    delete[] m_tex_data;
+    m_tex_data = new unsigned short[m_tex_size];
 
-    for (auto i = 0; i < m_buffer_size; ++i) {
-        const auto x = (i % width) - width / 2;
-        const auto y = (i / width) - height / 2;
-        m_vertex_buffer[i] = {(x + 0.5F) * norm_w, (y + 0.5F) * norm_h};
-    }
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
 
-    // Bind vertex buffer
+    glGenTextures(1, &m_texture_id);
+    glBindTexture(GL_TEXTURE_2D, m_texture_id);
 
-    glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float2) * m_buffer_size, m_vertex_buffer, GL_STATIC_DRAW);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    // Make Sample
+    // Sample
 
     std::random_device device;
     std::default_random_engine rng(device());
-    std::uniform_int_distribution<int> rnd(0, 255);
+    std::uniform_int_distribution<int> rnd(0, 65535);
 
-    m_sample = new color3[m_buffer_size];
-    for (auto i = 0; i < m_buffer_size; ++i) {
-        m_sample[i].r = static_cast<unsigned char>(rnd(rng));
-        m_sample[i].g = static_cast<unsigned char>(rnd(rng));
-        m_sample[i].b = static_cast<unsigned char>(rnd(rng));
+    delete[] m_sample;
+    m_sample = new unsigned short[m_tex_size];
+
+    for (auto i = 0; i < m_tex_size; ++i) {
+        m_sample[i] = static_cast<unsigned short>(rnd(rng));
     }
 }
 
@@ -147,12 +143,11 @@ GLuint cc::renderer::make_and_use_program() const {
 
     glEnableVertexAttribArray(c_position_attribute);
     glBindAttribLocation(program, c_position_attribute, c_position_attribute_name);
+    glVertexAttribPointer(c_position_attribute, 2, GL_FLOAT, GL_FALSE, sizeof(vertex), (GLvoid *) offsetof(vertex, pos));
 
-    glEnableVertexAttribArray(c_color_attribute);
-    glBindAttribLocation(program, c_color_attribute, c_color_attribute_name);
-
-    glBindAttribLocation(program, c_point_size_attribute, c_point_size_attribute_name);
-    glVertexAttrib1f(c_point_size_attribute, c_point_size);
+    glEnableVertexAttribArray(c_texture_coords_attribute);
+    glBindAttribLocation(program, c_texture_coords_attribute, c_texture_coords_attribute_name);
+    glVertexAttribPointer(c_texture_coords_attribute, 2, GL_FLOAT, GL_FALSE, sizeof(vertex), (GLvoid *) offsetof(vertex, tex));
 
     glLinkProgram(program);
     glUseProgram(program);
