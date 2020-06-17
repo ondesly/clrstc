@@ -63,6 +63,8 @@ cc::renderer::~renderer() {
     glDeleteBuffers(1, &m_color_buffer_id);
     delete[] m_color_buffer;
 
+    delete[] m_sample;
+
     //
 
     glDeleteProgram(m_program);
@@ -73,15 +75,11 @@ void cc::renderer::render() {
 
     // Update
 
-    static std::random_device device;
-    static std::default_random_engine rng(device());
-    static std::uniform_int_distribution<int> rnd(0, 255);
-
-    for (auto i = 0; i < m_buffer_size; ++i) {
-        m_color_buffer[i].r = static_cast<unsigned char>(rnd(rng));
-        m_color_buffer[i].g = static_cast<unsigned char>(rnd(rng));
-        m_color_buffer[i].b = static_cast<unsigned char>(rnd(rng));
+    static auto offset = m_buffer_size;
+    for (int i = 0; i < m_buffer_size; ++i) {
+        m_color_buffer[i] = m_sample[(i + offset) % m_buffer_size];
     }
+    ++offset;
 
     // Draw
 
@@ -119,6 +117,19 @@ void cc::renderer::set_screen_size(const cc::float2 &size) {
 
     glBindBuffer(GL_ARRAY_BUFFER, m_vertex_buffer_id);
     glBufferData(GL_ARRAY_BUFFER, sizeof(float2) * m_buffer_size, m_vertex_buffer, GL_STATIC_DRAW);
+
+    // Make Sample
+
+    std::random_device device;
+    std::default_random_engine rng(device());
+    std::uniform_int_distribution<int> rnd(0, 255);
+
+    m_sample = new color3[m_buffer_size];
+    for (auto i = 0; i < m_buffer_size; ++i) {
+        m_sample[i].r = static_cast<unsigned char>(rnd(rng));
+        m_sample[i].g = static_cast<unsigned char>(rnd(rng));
+        m_sample[i].b = static_cast<unsigned char>(rnd(rng));
+    }
 }
 
 GLuint cc::renderer::make_and_use_program() const {

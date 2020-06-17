@@ -35,6 +35,8 @@ namespace cc {
         GLuint m_color_buffer_id = 0;
         color3 *m_color_buffer = nullptr;
 
+        color3 *m_sample = nullptr;
+
     private:
 
         renderer();
